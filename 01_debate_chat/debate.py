@@ -119,8 +119,8 @@ class DebateManager:
 # Sidebar
 with st.sidebar:
     st.title("🎛️ Controle")
-    google_key = st.text_input("Gemini API", value="AIzaSyDoGigV5jCyqoyrOtI_G5YyPoS-NkZepvI", type="password")
-    serper_key = st.text_input("Serper API", value="461510402522d9f28b9053e8d65be28bb15fe330", type="password")
+    google_key = st.text_input("Gemini API", value="xxx.xxx.xxx.xxxx", type="password")
+    serper_key = st.text_input("Serper API", value="xxx.xxxx.xxx.xxxx", type="password")
     
     if st.button("Resetar Debate"):
         st.session_state.chat_history = []
