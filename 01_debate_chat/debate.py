@@ -1,5 +1,4 @@
 import os
-# Desativa telemetria chata
 os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
 
 import streamlit as st
@@ -7,212 +6,181 @@ import sys
 import re
 import time
 from crewai import Agent, Task, Crew, Process
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from crewai_tools import SerperDevTool
 
-# ================= CONFIGURAÇÃO VISUAL =================
-st.set_page_config(page_title="DEBATE CHAT LIVE", page_icon="💬", layout="wide")
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="DEBATE CHAT LIVE: Fly Automação", page_icon="⚖️", layout="wide")
 
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: #E0E0E0; }
-    /* Balões de Chat mais bonitos */
-    .stChatMessage { border-radius: 10px; margin-bottom: 10px; }
+    .stChatMessage { border-radius: 15px; border: 1px solid #30363d; margin-bottom: 15px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ================= LOGGER (CÉREBRO) =================
+# --- LOGGER PARA O EXPANDER ---
 class StreamolitLogger:
     def __init__(self, widget):
         self.widget = widget
         self.buffer = ""
     def write(self, text):
-        # Limpa códigos de cor ANSI que poluem o texto
         text_clean = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', text)
         self.buffer += text_clean
-        # Mostra o log no expander
-        self.widget.code(self.buffer[-2000:], language="bash")
+        self.widget.code(self.buffer[-1500:], language="bash")
     def flush(self): pass
 
-# ================= MOTOR DO DEBATE =================
+# --- CLASSE GERENCIADORA DO DEBATE ---
 class DebateManager:
-    def __init__(self, google_key, serper_key):
-        os.environ["GOOGLE_API_KEY"] = google_key
+    def __init__(self, openai_key, serper_key):
+        os.environ["OPENAI_API_KEY"] = openai_key
         os.environ["SERPER_API_KEY"] = serper_key
         
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            verbose=True,
-            temperature=0.6,
-            google_api_key=google_key
+        # GPT-4o: O melhor modelo para debates complexos
+        self.llm = ChatOpenAI(
+            model="gpt-4o",
+            temperature=0.8
         )
         self.search_tool = SerperDevTool()
 
-    # --- PASSO 1: GERAR O DIÁLOGO ---
     def gerar_dialogo(self, tema, historico, rodada):
         dom = Agent(
             role='Economista Libertário',
-            goal='Debater usando dados de mercado.',
-            backstory="Você é DOM. Defende privatizações e liberdade. Seja curto e direto.",
+            goal='Defender o livre mercado e a desestatização total.',
+            backstory="Você é o DOM. Capitalista ferrenho, irônico e focado em eficiência privada. Use frases curtas e ácidas.",
             llm=self.llm, tools=[self.search_tool], verbose=True, allow_delegation=False
         )
 
         che = Agent(
             role='Sociólogo Progressista',
-            goal='Debater usando dados sociais.',
-            backstory="Você é CHE. Defende o estado social. Seja curto e direto.",
+            goal='Defender o bem-estar social e a intervenção do Estado para reduzir desigualdades.',
+            backstory="Você é o CHE. Humanista, focado em justiça social e direitos coletivos. Responda ao Dom com firmeza moral.",
             llm=self.llm, tools=[self.search_tool], verbose=True, allow_delegation=False
         )
 
         task_dialogo = Task(
             description=f"""
-            RODADA {rodada} - TEMA: {tema}
+            TEMA DO DEBATE: {tema}
+            RODADA: {rodada}
             
-            HISTÓRICO: {historico}
+            HISTÓRICO RECENTE: 
+            {historico}
             
-            1. DOM fala primeiro (baseado no histórico).
-            2. CHE responde ao Dom.
+            MISSÃO:
+            1. DOM fala primeiro, provocando ou respondendo ao histórico.
+            2. CHE rebate o argumento do DOM imediatamente.
+            3. REGRAS: Mantenha as mensagens CURTAS e DINÂMICAS (estilo chat). 
             
-            FORMATO OBRIGATÓRIO (NÃO MUDE ISSO):
+            FORMATO OBRIGATÓRIO:
             DOM: [Texto do Dom]
             CHE: [Texto do Che]
             """,
-            expected_output="O diálogo exato entre os dois.",
+            expected_output="O diálogo exato entre DOM e CHE.",
             agent=dom
         )
 
         crew = Crew(agents=[dom, che], tasks=[task_dialogo], verbose=True)
         return crew.kickoff()
 
-    # --- PASSO 2: JULGAMENTO (ATHENA) ---
     def julgar_dialogo(self, dialogo_atual):
         athena = Agent(
             role='Mediadora de IA',
-            goal='Decidir o status do debate.',
-            backstory="Você é ATHENA. Analise se chegaram a um CONSENSO ou se estão em LOOP.",
+            goal='Analisar se o debate chegou ao fim ou se deve continuar.',
+            backstory="Você é ATHENA. Deusa da Sabedoria. Analise a lógica e decida o status do debate.",
             llm=self.llm, verbose=True, allow_delegation=False
         )
 
         task_veredito = Task(
-            description=f"""
-            Analise este diálogo:
-            "{dialogo_atual}"
-            
-            Eles concordaram em uma solução?
-            
-            Responda APENAS com uma das palavras:
-            - "CONSENSO" (Se concordaram)
-            - "STALEMATE" (Se estão repetindo o mesmo argumento)
-            - "CONTINUE" (Se o debate está fluindo bem)
-            
-            Em seguida, adicione uma frase curta explicando.
-            """,
-            expected_output="Status e Explicação.",
+            description=f"Analise: '{dialogo_atual}'. O debate chegou a um CONSENSO, está em STALEMATE (travado) ou deve CONTINUE?",
+            expected_output="Palavra-chave (CONSENSO, STALEMATE ou CONTINUE) e uma explicação de 1 frase.",
             agent=athena
         )
 
         crew = Crew(agents=[athena], tasks=[task_veredito], verbose=True)
         return crew.kickoff()
 
-# ================= INTERFACE =================
-
-# Sidebar
+# --- SIDEBAR ---
 with st.sidebar:
-    st.title("🎛️ Controle")
-    google_key = st.text_input("Gemini API", value="xxx.xxx.xxx.xxxx", type="password")
-    serper_key = st.text_input("Serper API", value="xxx.xxxx.xxx.xxxx", type="password")
+    st.image("https://api.dicebear.com/7.x/bottts/svg?seed=Fly", width=80)
+    st.title("Fly Automação: Debate PRO")
+    openai_key = st.text_input("OpenAI API Key", value="xxx.xxx.xxx.xxx.xxxx", type="password")
+    serper_key = st.text_input("Serper API Key", value="xxx.xxx.xxx.xxx.xxxx", type="password")
     
-    if st.button("Resetar Debate"):
+    st.divider()
+    if st.button("Resetar Arena", use_container_width=True):
         st.session_state.chat_history = []
         st.session_state.rodada = 0
         st.session_state.status = "PRONTO"
         st.rerun()
 
-# Estado da Sessão
+# --- ESTADO DA SESSÃO ---
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "rodada" not in st.session_state: st.session_state.rodada = 0
 if "status" not in st.session_state: st.session_state.status = "PRONTO"
 
-st.title("💬 Debate Chat: Dom vs Che")
+st.title("⚖️ Arena Fly: O Grande Debate")
+st.caption("Agentes Autônomos (CrewAI + GPT-4o) em um duelo de ideologias.")
 
-# Mostra o histórico visual do chat (O que já aconteceu)
+# --- EXIBIÇÃO DO CHAT ---
 for msg in st.session_state.chat_history:
     with st.chat_message(msg["role"], avatar=msg["avatar"]):
-        st.write(msg["content"])
+        st.markdown(msg["content"])
 
-# Input do Tema
+# --- INPUT DO TEMA ---
 if st.session_state.status == "PRONTO":
-    tema = st.chat_input("Digite o tema do debate...")
+    tema = st.chat_input("Insira o tema do debate e veja a mágica acontecer...")
     if tema:
-        st.session_state.tema = tema
-        st.session_state.status = "RODANDO"
-        # Adiciona mensagem do usuário
-        st.session_state.chat_history.append({"role": "user", "avatar": "👤", "content": f"Tema: {tema}"})
-        st.rerun()
+        if not openai_key:
+            st.error("Coloque a sua Chave da OpenAI na lateral!")
+        else:
+            st.session_state.tema = tema
+            st.session_state.status = "RODANDO"
+            st.session_state.chat_history.append({"role": "user", "avatar": "👤", "content": f"**Tema da Rodada:** {tema}"})
+            st.rerun()
 
-# ================= LOOP DE EXECUÇÃO =================
+# --- LOOP DE EXECUÇÃO ---
 if st.session_state.status == "RODANDO":
-    
     st.session_state.rodada += 1
     
-    # Coluna Expander para o "Cérebro" (Logs)
-    with st.expander(f"🧠 Processamento da IA (Rodada {st.session_state.rodada})", expanded=True):
+    with st.expander(f"🧠 Log de Processamento (Rodada {st.session_state.rodada})", expanded=True):
         log_placeholder = st.empty()
         logger = StreamolitLogger(log_placeholder)
-        sys.stdout = logger # Redireciona o terminal para cá
+        sys.stdout = logger 
 
         try:
-            manager = DebateManager(google_key, serper_key)
+            manager = DebateManager(openai_key, serper_key)
             
-            # --- FASE 1: O DEBATE ACONTECE ---
-            # Prepara o histórico em texto para a IA ler
-            hist_txt = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.chat_history if m['role'] in ['DOM', 'CHE']])
+            # Contexto histórico para evitar repetições
+            historico_recente = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.chat_history[-4:] if m['role'] in ['DOM', 'CHE']])
             
-            # Roda o Crew de Diálogo
-            dialogo_raw = str(manager.gerar_dialogo(st.session_state.tema, hist_txt, st.session_state.rodada))
+            resultado = manager.gerar_dialogo(st.session_state.tema, historico_recente, st.session_state.rodada)
+            dialogo_raw = str(resultado)
             
-            # --- FASE 2: ATUALIZA O CHAT VISUALMENTE ---
-            # (Aqui fazemos o efeito de chat, processando a string)
-            
-            if "DOM:" in dialogo_raw:
-                # Extrai fala do Dom
+            # Parsing do Diálogo
+            if "DOM:" in dialogo_raw and "CHE:" in dialogo_raw:
                 fala_dom = dialogo_raw.split("DOM:")[1].split("CHE:")[0].strip()
+                fala_che = dialogo_raw.split("CHE:")[1].strip()
+                
                 st.session_state.chat_history.append({"role": "DOM", "avatar": "🟦", "content": fala_dom})
-            
-            if "CHE:" in dialogo_raw:
-                # Extrai fala do Che
-                # Proteção caso venha texto depois ou não
-                partes_che = dialogo_raw.split("CHE:")
-                fala_che = partes_che[1].strip() if len(partes_che) > 1 else "..."
                 st.session_state.chat_history.append({"role": "CHE", "avatar": "🟥", "content": fala_che})
-
-            # --- FASE 3: O JULGAMENTO ---
-            veredito = str(manager.julgar_dialogo(dialogo_raw))
             
-            # Checa o status
-            status_final = "CONTINUE"
-            if "CONSENSO" in veredito: status_final = "CONSENSO"
-            elif "STALEMATE" in veredito: status_final = "STALEMATE"
+            # Julgamento da Athena
+            veredito = str(manager.julgar_dialogo(dialogo_raw))
+            st.session_state.chat_history.append({"role": "ATHENA", "avatar": "⚖️", "content": f"**Veredito:** {veredito}"})
 
-            # Adiciona aviso da Athena no chat
-            st.session_state.chat_history.append({"role": "ATHENA", "avatar": "⚖️", "content": f"**Status:** {veredito}"})
-
-            # Lógica de Loop
-            if status_final == "CONSENSO":
-                st.balloons()
-                st.success("Consenso Alcançado!")
-                st.session_state.status = "FIM"
-            elif status_final == "STALEMATE":
-                st.warning("O debate travou.")
+            # Controle de Fluxo
+            if "CONSENSO" in veredito.upper() or "STALEMATE" in veredito.upper():
                 st.session_state.status = "FIM"
             else:
-                # Se for CONTINUE, ele dá um rerun e volta pro começo do IF, rodando a próxima rodada
-                time.sleep(2)
+                time.sleep(2) # Pequena pausa para realismo
                 st.rerun()
 
         except Exception as e:
-            st.error(f"Erro: {e}")
+            st.error(f"Erro na execução: {e}")
             st.session_state.status = "ERRO"
         
         finally:
-            sys.stdout = sys.__stdout__ # Devolve o terminal
+            sys.stdout = sys.__stdout__
+
+if st.session_state.status == "FIM":
+    st.success("Debate finalizado com sucesso!")
