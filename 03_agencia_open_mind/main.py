@@ -2,142 +2,136 @@ import os
 import asyncio
 import json
 import chainlit as cl
-from google import genai
-from google.genai import types
 from duckduckgo_search import DDGS
+from langchain_openai import ChatOpenAI
 
+# 1. CONFIGURAÇÃO DE CHAVES
+# Substitua pela sua chave sk-...
+OPENAI_API_KEY = "xxxx.x.xx.x.x.xxxx"
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
-API_KEY = "Axxxx.xxxx.xxx.xxx" 
 ARQUIVO_FINAL = "PROJETO_MARKETING_FINAL.md"
 
-if API_KEY == "SUA_API_KEY_AQUI":
-    raise ValueError("⚠️ COLOQUE SUA API KEY!")
 
-client = genai.Client(api_key=API_KEY)
-
+llm = ChatOpenAI(model="gpt-4o", temperature=0.8)
 
 async def market_research(niche, phase):
-    """Busca tendências específicas para o nicho escolhido pelo usuário."""
-    query = f"{niche} market trends {phase} 2026 analysis"
-    print(f"🔎 Pesquisando: {query}")
+    """Busca tendências reais para embasar os agentes."""
+    query = f"{niche} tendências mercado {phase} 2026"
     try:
         with DDGS() as ddgs:
-            return [r for r in ddgs.text(query, max_results=3)]
-    except: return []
-
+            results = [r for r in ddgs.text(query, max_results=3)]
+            return results
+    except:
+        return []
 
 async def agency_turn(agent, niche, phase, context, market_data):
+    """Turno de fala de cada especialista da agência."""
     prompt = f"""
     VOCÊ É: {agent['name']} ({agent['role']})
-    ESTAMOS CRIANDO UM PROJETO PARA: "{niche}"
-    
+    PROJETO: "{niche}"
     FASE ATUAL: {phase}
     
-    DADOS REAIS DO MERCADO (2026): 
+    DADOS DE MERCADO (PESQUISA REAL): 
     {json.dumps(market_data, indent=2)}
     
-    HISTÓRICO DA REUNIÃO:
+    HISTÓRICO DA REUNIÃO (O QUE JÁ FOI DITO):
     {context}
     
     SUA MISSÃO:
-    1. Aja como um especialista de elite. Use a linguagem adequada ao nicho (se for Tech, use termos tech; se for Moda, use termos fashion).
-    2. Critique as ideias anteriores. Se o Stratos foi conservador, o Pixel deve ousar. Se o Pixel viajou, o Metric deve cortar custos.
-    3. Dê ideias concretas (Nomes, Preços, Slogans, Canais).
-    4. {agent['style']}
-    5. Fale Português.
+    1. Seja um especialista de elite. Use termos técnicos do seu cargo.
+    2. DESENVOLVA: Escreva de 2 a 3 parágrafos densos com ideias práticas.
+    3. NÃO REPITA: Se alguém já sugeriu algo, critique ou traga uma abordagem complementar inédita.
+    4. INTERAJA: Responda diretamente ao colega que falou antes de você.
+    5. ESTILO: {agent['style']}
     """
     
     try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.85)
-        )
-        return response.text.strip()
-    except: return "Analisando..."
-
+        response = await llm.ainvoke(prompt)
+        return response.content.strip()
+    except Exception as e:
+        return f"*(O especialista {agent['name']} está revisando os dados...)*"
 
 async def generate_final_doc(niche, history):
+    """Compilação final feita pelo 'CEO' da Agência."""
     prompt = f"""
-    ATUE COMO O CEO DA AGÊNCIA.
-    Compile o PLANO DE MARKETING FINAL para o cliente sobre: "{niche}".
+    ATUE COMO CEO DA AGÊNCIA OPEN-MIND.
+    Gere o Book Estratégico Final para o cliente: "{niche}".
     
-    Use o histórico de discussão abaixo para preencher os tópicos. Seja profissional e organizado.
-    
-    HISTÓRICO:
+    HISTÓRICO COMPLETO DO DEBATE:
     {history}
     
     FORMATO (MARKDOWN):
-    # PLANEJAMENTO ESTRATÉGICO: {niche.upper()}
-    
-    ## 1. Visão Geral e Persona (Stratos)
-    ## 2. Identidade Visual e Criativa (Pixel)
-    ## 3. Estratégia de Crescimento e Vendas (Metric)
-    ## 4. Roteiro de Lançamento (Next Steps)
+    # 🚀 PLANEJAMENTO ESTRATÉGICO: {niche.upper()}
+    ## 1. Posicionamento e Persona (Stratos)
+    ## 2. Direção de Arte e Branding (Pixel)
+    ## 3. Growth e Aquisição (Metric)
+    ## 4. Cronograma de Execução (Next Steps)
     """
     try:
-        res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-        return res.text.strip()
-    except: return "Erro na compilação."
-
+        res = await llm.ainvoke(prompt)
+        return res.content.strip()
+    except:
+        return "Erro na compilação do documento final."
 
 @cl.on_chat_start
 async def start():
-    
-    stratos = {
-        "name": "STRATOS", "emoji": "🧠",
-        "role": "Estrategista de Marca",
-        "style": "Foque no 'Porquê'. Defina quem compra e qual a dor que resolvemos. Seja analítico."
-    }
-    pixel = {
-        "name": "PIXEL", "emoji": "🎨",
-        "role": "Diretor Criativo",
-        "style": "Foque na 'Emoção'. Pense no nome, no logo, na vibe do Instagram/TikTok. Quebre padrões."
-    }
-    metric = {
-        "name": "METRIC", "emoji": "📊",
-        "role": "Growth Hacker",
-        "style": "Foque no 'Lucro'. Como vamos vender? Quanto custa? Onde anunciar (Ads, Influencers)? Seja pragmático."
-    }
-    
-    team = [stratos, pixel, metric]
-    history = []
-    
-    
-    await cl.Message(content="🏢 **AGÊNCIA OPEN-MIND INICIADA**\n\nEu sou o seu Gerente de Contas. O time de elite (Stratos, Pixel e Metric) está na sala de reunião.\n\n**Qual é o produto, serviço ou ideia que você quer lançar hoje?**\n(Ex: 'Uma marca de roupas streetwear sustentável', 'Um App de IA para advogados', 'Uma barbearia temática')", author="SISTEMA").send()
+    # Configuração Visual dos Agentes
+    try:
+        await cl.Avatar(name="STRATOS", url="https://api.dicebear.com/7.x/avataaars/svg?seed=Stratos").send()
+        await cl.Avatar(name="PIXEL", url="https://api.dicebear.com/7.x/avataaars/svg?seed=Pixel").send()
+        await cl.Avatar(name="METRIC", url="https://api.dicebear.com/7.x/avataaars/svg?seed=Metric").send()
+        await cl.Avatar(name="SISTEMA", url="https://api.dicebear.com/7.x/bottts/svg?seed=Fly").send()
+    except: pass
+
+    await cl.Message(
+        content="🏢 **AGÊNCIA OPEN-MIND: OPENAI EDITION**\nO time de elite está na sala. \n\n**Qual ideia de negócio vamos transformar em realidade hoje?**",
+        author="SISTEMA"
+    ).send()
     
     res = await cl.AskUserMessage(content="", timeout=600).send()
     user_niche = res['output']
     
-    history.append(f"PROJETO DEFINIDO PELO CLIENTE: {user_niche}")
+    history = [f"CLIENTE DESEJA LANÇAR: {user_niche}"]
     
-    
+    team = [
+        {"name": "STRATOS", "emoji": "🧠", "role": "Estrategista de Marca", "style": "Foque no 'Porquê' e na dor do cliente."},
+        {"name": "PIXEL", "emoji": "🎨", "role": "Diretor Criativo", "style": "Foque na 'Vibe', estética e diferenciação visual."},
+        {"name": "METRIC", "emoji": "📊", "role": "Growth Hacker", "style": "Foque em 'Números', tráfego pago e ROI."}
+    ]
+
     phases = [
-        "FASE 1: Diagnóstico, Público-Alvo e Diferenciação",
-        "FASE 2: Naming, Branding e Identidade Visual",
-        "FASE 3: Estratégia de Canais e Aquisição de Clientes",
-        "FASE 4: Ação de Lançamento (O Big Bang)"
+        "FASE 1: Diagnóstico e Público-Alvo",
+        "FASE 2: Branding e Conceito Criativo",
+        "FASE 3: Estratégia de Vendas e Canais",
+        "FASE 4: O Plano de Lançamento"
     ]
 
     for phase in phases:
         await cl.Message(content=f"📌 **{phase}**", author="SISTEMA").send()
         
-        
+        # Busca dados reais do mercado para a fase atual
         market_data = await market_research(user_niche, phase)
         
         for agent in team:
-            msg = await agency_turn(agent, user_niche, phase, "\n".join(history[-8:]), market_data)
-            await cl.Message(content=msg, author=f"{agent['emoji']} {agent['name']}").send()
-            history.append(f"{agent['name']}: {msg}")
-            await asyncio.sleep(4)
-        
-        await asyncio.sleep(2)
+            # Gerenciamento de Memória (Últimas 5 mensagens)
+            contexto_recente = "\n".join(history[-5:])
+            
+            msg_raw = await agency_turn(agent, user_niche, phase, contexto_recente, market_data)
+            
+            # Formatação Visual Premium
+            msg_formatada = f"### {agent['emoji']} {agent['name']}\n**{agent['role']}**\n---\n{msg_raw}"
+            
+            await cl.Message(content=msg_formatada, author=agent['name']).send()
+            
+            history.append(f"{agent['name']}: {msg_raw}")
+            await asyncio.sleep(6) # Pausa para leitura no vídeo
 
-  
-    await cl.Message(content="✅ **REUNIÃO ENCERRADA.** Gerando o Book do Projeto...", author="SISTEMA").send()
+    # Finalização
+    await cl.Message(content="✅ **REUNIÃO ENCERRADA.** Gerando o Book Estratégico...", author="SISTEMA").send()
     final_doc = await generate_final_doc(user_niche, "\n".join(history))
     
     with open(ARQUIVO_FINAL, "w", encoding="utf-8") as f:
         f.write(final_doc)
     
-    await cl.Message(content=f"📄 **PROJETO ENTREGUE:**\n\n{final_doc}", author="AGÊNCIA OPEN-MIND").send()
+    await cl.Message(content=f"📄 **BOOK DO PROJETO ENTREGUE:**\n\n{final_doc}", author="SISTEMA").send()
