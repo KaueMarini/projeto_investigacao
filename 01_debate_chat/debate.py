@@ -9,7 +9,7 @@ from crewai import Agent, Task, Crew, Process
 from langchain_openai import ChatOpenAI
 from crewai_tools import SerperDevTool
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
+
 st.set_page_config(page_title="DEBATE CHAT LIVE: Fly Automação", page_icon="⚖️", layout="wide")
 
 st.markdown("""
@@ -19,7 +19,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- LOGGER PARA O EXPANDER ---
+
 class StreamolitLogger:
     def __init__(self, widget):
         self.widget = widget
@@ -30,13 +30,12 @@ class StreamolitLogger:
         self.widget.code(self.buffer[-1500:], language="bash")
     def flush(self): pass
 
-# --- CLASSE GERENCIADORA DO DEBATE ---
 class DebateManager:
     def __init__(self, openai_key, serper_key):
         os.environ["OPENAI_API_KEY"] = openai_key
         os.environ["SERPER_API_KEY"] = serper_key
         
-        # GPT-4o: O melhor modelo para debates complexos
+        
         self.llm = ChatOpenAI(
             model="gpt-4o",
             temperature=0.8
@@ -99,7 +98,7 @@ class DebateManager:
         crew = Crew(agents=[athena], tasks=[task_veredito], verbose=True)
         return crew.kickoff()
 
-# --- SIDEBAR ---
+
 with st.sidebar:
     st.image("https://api.dicebear.com/7.x/bottts/svg?seed=Fly", width=80)
     st.title("Fly Automação: Debate PRO")
@@ -113,7 +112,7 @@ with st.sidebar:
         st.session_state.status = "PRONTO"
         st.rerun()
 
-# --- ESTADO DA SESSÃO ---
+
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
 if "rodada" not in st.session_state: st.session_state.rodada = 0
 if "status" not in st.session_state: st.session_state.status = "PRONTO"
@@ -121,12 +120,12 @@ if "status" not in st.session_state: st.session_state.status = "PRONTO"
 st.title("⚖️ Arena Fly: O Grande Debate")
 st.caption("Agentes Autônomos (CrewAI + GPT-4o) em um duelo de ideologias.")
 
-# --- EXIBIÇÃO DO CHAT ---
+
 for msg in st.session_state.chat_history:
     with st.chat_message(msg["role"], avatar=msg["avatar"]):
         st.markdown(msg["content"])
 
-# --- INPUT DO TEMA ---
+
 if st.session_state.status == "PRONTO":
     tema = st.chat_input("Insira o tema do debate e veja a mágica acontecer...")
     if tema:
@@ -138,7 +137,7 @@ if st.session_state.status == "PRONTO":
             st.session_state.chat_history.append({"role": "user", "avatar": "👤", "content": f"**Tema da Rodada:** {tema}"})
             st.rerun()
 
-# --- LOOP DE EXECUÇÃO ---
+
 if st.session_state.status == "RODANDO":
     st.session_state.rodada += 1
     
@@ -150,13 +149,13 @@ if st.session_state.status == "RODANDO":
         try:
             manager = DebateManager(openai_key, serper_key)
             
-            # Contexto histórico para evitar repetições
+            
             historico_recente = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.chat_history[-4:] if m['role'] in ['DOM', 'CHE']])
             
             resultado = manager.gerar_dialogo(st.session_state.tema, historico_recente, st.session_state.rodada)
             dialogo_raw = str(resultado)
             
-            # Parsing do Diálogo
+           
             if "DOM:" in dialogo_raw and "CHE:" in dialogo_raw:
                 fala_dom = dialogo_raw.split("DOM:")[1].split("CHE:")[0].strip()
                 fala_che = dialogo_raw.split("CHE:")[1].strip()
@@ -164,15 +163,15 @@ if st.session_state.status == "RODANDO":
                 st.session_state.chat_history.append({"role": "DOM", "avatar": "🟦", "content": fala_dom})
                 st.session_state.chat_history.append({"role": "CHE", "avatar": "🟥", "content": fala_che})
             
-            # Julgamento da Athena
+            
             veredito = str(manager.julgar_dialogo(dialogo_raw))
             st.session_state.chat_history.append({"role": "ATHENA", "avatar": "⚖️", "content": f"**Veredito:** {veredito}"})
 
-            # Controle de Fluxo
+            
             if "CONSENSO" in veredito.upper() or "STALEMATE" in veredito.upper():
                 st.session_state.status = "FIM"
             else:
-                time.sleep(2) # Pequena pausa para realismo
+                time.sleep(2) 
                 st.rerun()
 
         except Exception as e:
