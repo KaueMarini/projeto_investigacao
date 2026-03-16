@@ -1,148 +1,124 @@
 import os
 import asyncio
 import chainlit as cl
-from google import genai
-from google.genai import types
-from pypdf import PdfReader 
+from pypdf import PdfReader
+from crewai import Agent, Task, Crew
+from langchain_openai import ChatOpenAI
 
+# 1. CONFIGURAÇÃO DE CHAVES
+OPENAI_API_KEY = "xxx.xxx.xx.xxx.xxx.xxxxx"
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
-API_KEY = "xxxx.xxxxx.xxxx.xxxx" 
-
-if API_KEY == "SUA_API_KEY_AQUI":
-    raise ValueError("⚠️ COLOQUE SUA API KEY!")
-
-client = genai.Client(api_key=API_KEY)
-
+# GPT-4o para garantir o melhor raciocínio jurídico
+llm = ChatOpenAI(model="gpt-4o", temperature=0.75)
 
 def extract_text_from_pdf(file_path):
-    """Lê o PDF enviado e extrai o texto para a IA ler."""
+    """Extrai texto do PDF de forma limpa."""
     try:
         reader = PdfReader(file_path)
         text = ""
         for page in reader.pages:
-            text += page.extract_text() + "\n"
-        return text[:30000] 
+            content = page.extract_text()
+            if content: text += content + "\n"
+        return text[:12000] # Equilíbrio entre informação e economia de tokens
     except Exception as e:
-        return f"Erro ao ler PDF: {e}"
-
-
-async def legal_turn(agent, context, case_text):
-    prompt = f"""
-    VOCÊ É: {agent['name']} ({agent['role']})
-    OBJETIVO: Montar a melhor defesa possível para o cliente baseada no arquivo.
-    
-    --- CONTEÚDO DO PROCESSO/DOCUMENTO (FATO REAL) ---
-    {case_text}
-    
-    --- HISTÓRICO DA REUNIÃO ---
-    {context}
-    
-    SUA MISSÃO:
-    1. Analise os fatos friamente. Use termos jurídicos (Habeas Corpus, Dolo, Culpa, Nulidade, Prova Ilícita).
-    2. {agent['style']}
-    3. Se for o RIVALS, ataque impiedosamente a tese dos outros.
-    4. Fale Português Jurídico (mas claro).
-    """
-    
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.7)
-        )
-        return response.text.strip()
-    except: return "Consultando Vade Mecum..."
-
-
-async def generate_legal_doc(history):
-    prompt = f"""
-    ATUE COMO JUIZ/RELATOR.
-    Com base na discussão da banca jurídica abaixo, redija a ESTRATÉGIA FINAL DE DEFESA.
-    
-    DISCUSSÃO:
-    {history}
-    
-    FORMATO (MARKDOWN):
-    # ESTRATÉGIA DE DEFESA: [Nome do Caso]
-    ## 1. Resumo dos Fatos
-    ## 2. Teses Jurídicas Principais (Dr. Magnus)
-    ## 3. Fundamentação Legal & Precedentes (Lexia)
-    ## 4. Pontos Fracos & Como Mitigar (Análise do Rivals)
-    ## 5. Conclusão e Pedidos
-    """
-    try:
-        res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-        return res.text.strip()
-    except: return "Erro ao redigir peça."
-
+        return f"Erro na leitura: {e}"
 
 @cl.on_chat_start
 async def start():
+    cl.user_session.set("debate_ativo", True)
     
-    magnus = {
-        "name": "DR. MAGNUS", "emoji": "⚖️",
-        "role": "Sócio Sênior / Estrategista",
-        "style": "Foque na narrativa, na intenção do réu e nos princípios constitucionais (Dignidade, Ampla Defesa)."
-    }
-    lexia = {
-        "name": "DRA. LEXIA", "emoji": "📚",
-        "role": "Especialista Processual",
-        "style": "Procure erros técnicos. A prova foi colhida legalmente? O prazo prescreveu? Cite Artigos de Lei."
-    }
-    rivals = {
-        "name": "PROMOTOR RIVALS", "emoji": "😈",
-        "role": "Simulação da Acusação",
-        "style": "Seja agressivo. Aponte por que o réu vai perder. Mostre as falhas na defesa do Magnus."
-    }
-    
-    team = [magnus, lexia, rivals]
-    history = []
+    # Definição técnica das identidades
+    magnus = Agent(
+        role='Sócio Sênior Estrategista',
+        goal='Desenvolver a narrativa de defesa macro e princípios constitucionais.',
+        backstory="Dr. Magnus. Veterano da advocacia. Prefere teses robustas e boa-fé.",
+        llm=llm
+    )
+    lexia = Agent(
+        role='Processualista Técnica',
+        goal='Identificar nulidades de rito, vícios de forma e erros de prazo.',
+        backstory="Dra. Lexia. Cirúrgica com a letra da lei. Não tolera erros formais.",
+        llm=llm
+    )
+    rivals = Agent(
+        role='Promotor de Ataque',
+        goal='Destruir a estratégia da defesa e apontar a responsabilidade do réu.',
+        backstory="Promotor Rivals. Perspicaz em encontrar contradições lógicas.",
+        llm=llm
+    )
 
-   
-    files = None
-    while files == None:
-        files = await cl.AskFileMessage(
-            content="📁 **SISTEMA JURIS PRIME INICIADO**\nPor favor, anexe o arquivo do caso (PDF ou Texto) para análise preliminar.",
-            accept=["application/pdf", "text/plain"],
-            max_size_mb=20,
-            timeout=180
-        ).send()
+    cl.user_session.set("equipe", [
+        (magnus, "⚖️ DR. MAGNUS", "Sócio Sênior"),
+        (lexia, "📚 DRA. LEXIA", "Especialista Processual"),
+        (rivals, "😈 PROMOTOR RIVALS", "Simulador de Acusação")
+    ])
 
-    file = files[0]
+    # Solicitação do arquivo
+    files = await cl.AskFileMessage(
+        content="⚖️ **JURIS PRIME: MODO DEBATE PROFISSIONAL**\nAnexe o PDF para iniciarmos a banca. Para parar, digite **'para'**.",
+        accept=["application/pdf"]
+    ).send()
     
-   
-    msg = cl.Message(content=f"📖 Lendo autos do processo: `{file.name}`...", author="SISTEMA")
-    await msg.send()
+    case_text = extract_text_from_pdf(files[0].path)
+    cl.user_session.set("case_text", case_text)
+    cl.user_session.set("historico", "O debate técnico começou.")
+
+    await cl.Message(content="⚖️ **A banca está reunida e os advogados iniciaram a análise.**").send()
     
-    if "pdf" in file.type:
-        case_text = extract_text_from_pdf(file.path)
-    else:
-        with open(file.path, "r", encoding="utf-8") as f:
-            case_text = f.read()
+    # Inicia o loop automático de debate
+    await rodar_debate()
+
+async def rodar_debate():
+    while cl.user_session.get("debate_ativo"):
+        equipe = cl.user_session.get("equipe")
+        case_text = cl.user_session.get("case_text")
+        historico = cl.user_session.get("historico")
+
+        for agente, nome, cargo in equipe:
+            if not cl.user_session.get("debate_ativo"):
+                break
+
+            # PROMPT DE CONTEXTO AVANÇADO
+            task = Task(
+                description=f"""
+                --- DOCUMENTO BASE DO CASO ---
+                {case_text}
+                
+                --- HISTÓRICO DAS ÚLTIMAS FALAS (CONTEXTO) ---
+                {historico}
+                
+                SUA MISSÃO COMO {nome}:
+                1. Analise o caso e o que seus colegas disseram acima.
+                2. Desenvolva um argumento jurídico sólido de 2 a 3 parágrafos.
+                3. PROIBIÇÃO: Não repita artigos ou argumentos que já foram citados no histórico.
+                4. AVANÇO: Se o Magnus falou de nulidade, você deve falar de outro aspecto (ex: provas, mérito, dolo).
+                5. INTERAÇÃO: Concorde ou discorde frontalmente do colega anterior antes de trazer sua tese.
+                """,
+                expected_output="Um comentário jurídico denso, inédito e bem fundamentado.",
+                agent=agente
+            )
+
+            crew = Crew(agents=[agente], tasks=[task])
+            result = await cl.make_async(crew.kickoff)()
+
+            # FORMATAÇÃO VISUAL PARA O CHAT
+            header = f"### {nome}\n**Cargo:** _{cargo}_"
+            corpo_mensagem = f"{header}\n\n---\n\n{result.raw}"
             
-    msg.content = f"✅ **ANÁLISE CONCLUÍDA.** A banca está reunida. Iniciando debate..."
-    await msg.update()
+            await cl.Message(content=corpo_mensagem, author=nome).send()
+            
+            # ATUALIZAÇÃO DA JANELA DE CONTEXTO
+            historico += f"\n\n[{nome}]: {result.raw}"
+            # Mantém apenas as últimas 4 mensagens no histórico para não "enlouquecer" o agente com texto demais
+            historico_linhas = historico.split("\n\n")[-5:] 
+            cl.user_session.set("historico", "\n\n".join(historico_linhas))
+            
+            # Pausa para o usuário ler a fala (10 segundos é o ideal para 3 parágrafos)
+            await asyncio.sleep(10)
 
-   
-    phases = [
-        "FASE 1: Análise dos Fatos e Busca de Nulidades",
-        "FASE 2: Construção da Tese de Defesa (Mérito)",
-        "FASE 3: Simulação de Julgamento (Ataque vs Defesa)"
-    ]
-
-    for phase in phases:
-        await cl.Message(content=f"🏛️ **{phase}**", author="SISTEMA").send()
-        
-        for agent in team:
-            resp = await legal_turn(agent, "\n".join(history[-6:]), case_text)
-            await cl.Message(content=resp, author=f"{agent['emoji']} {agent['name']}").send()
-            history.append(f"{agent['name']}: {resp}")
-            await asyncio.sleep(3)
-        
-        await asyncio.sleep(2)
-
-   
-    await cl.Message(content="✍️ **Redigindo Estratégia Final...**", author="SISTEMA").send()
-    final_doc = await generate_legal_doc("\n".join(history))
-    
-    await cl.Message(content=f"📜 **PARECER JURÍDICO PRONTO:**\n\n{final_doc}", author="JURIS PRIME").send()
+@cl.on_message
+async def on_message(message: cl.Message):
+    if message.content.lower() in ["para", "parar", "stop", "chega", "exit"]:
+        cl.user_session.set("debate_ativo", False)
+        await cl.Message(content="🛑 **DEBATE ENCERRADO.** A banca finalizou os trabalhos.").send()
