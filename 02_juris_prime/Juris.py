@@ -5,11 +5,11 @@ from pypdf import PdfReader
 from crewai import Agent, Task, Crew
 from langchain_openai import ChatOpenAI
 
-# 1. CONFIGURAÇÃO DE CHAVES
+
 OPENAI_API_KEY = "xxx.xxx.xx.xxx.xxx.xxxxx"
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
-# GPT-4o para garantir o melhor raciocínio jurídico
+
 llm = ChatOpenAI(model="gpt-4o", temperature=0.75)
 
 def extract_text_from_pdf(file_path):
@@ -20,7 +20,7 @@ def extract_text_from_pdf(file_path):
         for page in reader.pages:
             content = page.extract_text()
             if content: text += content + "\n"
-        return text[:12000] # Equilíbrio entre informação e economia de tokens
+        return text[:12000] 
     except Exception as e:
         return f"Erro na leitura: {e}"
 
@@ -28,7 +28,7 @@ def extract_text_from_pdf(file_path):
 async def start():
     cl.user_session.set("debate_ativo", True)
     
-    # Definição técnica das identidades
+    
     magnus = Agent(
         role='Sócio Sênior Estrategista',
         goal='Desenvolver a narrativa de defesa macro e princípios constitucionais.',
@@ -54,7 +54,7 @@ async def start():
         (rivals, "😈 PROMOTOR RIVALS", "Simulador de Acusação")
     ])
 
-    # Solicitação do arquivo
+   
     files = await cl.AskFileMessage(
         content="⚖️ **JURIS PRIME: MODO DEBATE PROFISSIONAL**\nAnexe o PDF para iniciarmos a banca. Para parar, digite **'para'**.",
         accept=["application/pdf"]
@@ -66,7 +66,7 @@ async def start():
 
     await cl.Message(content="⚖️ **A banca está reunida e os advogados iniciaram a análise.**").send()
     
-    # Inicia o loop automático de debate
+    
     await rodar_debate()
 
 async def rodar_debate():
@@ -79,7 +79,7 @@ async def rodar_debate():
             if not cl.user_session.get("debate_ativo"):
                 break
 
-            # PROMPT DE CONTEXTO AVANÇADO
+          
             task = Task(
                 description=f"""
                 --- DOCUMENTO BASE DO CASO ---
@@ -102,19 +102,19 @@ async def rodar_debate():
             crew = Crew(agents=[agente], tasks=[task])
             result = await cl.make_async(crew.kickoff)()
 
-            # FORMATAÇÃO VISUAL PARA O CHAT
+          
             header = f"### {nome}\n**Cargo:** _{cargo}_"
             corpo_mensagem = f"{header}\n\n---\n\n{result.raw}"
             
             await cl.Message(content=corpo_mensagem, author=nome).send()
             
-            # ATUALIZAÇÃO DA JANELA DE CONTEXTO
+            
             historico += f"\n\n[{nome}]: {result.raw}"
-            # Mantém apenas as últimas 4 mensagens no histórico para não "enlouquecer" o agente com texto demais
+          
             historico_linhas = historico.split("\n\n")[-5:] 
             cl.user_session.set("historico", "\n\n".join(historico_linhas))
             
-            # Pausa para o usuário ler a fala (10 segundos é o ideal para 3 parágrafos)
+            
             await asyncio.sleep(10)
 
 @cl.on_message
