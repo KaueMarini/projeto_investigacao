@@ -2,11 +2,11 @@
 
 Este repositório contém uma suíte de três aplicações independentes focadas em **Orquestração de Inteligência Artificial** e **Agentes Autônomos**. O objetivo é demonstrar como sistemas multi-agentes podem ser arquitetados para resolver problemas complexos de negócios, utilizando raciocínio adversarial, Retrieval-Augmented Generation (RAG) e grounding com buscas na web.
 
-Todas as aplicações são alimentadas pelo modelo **Gemini 2.0 Flash** (Google GenAI) e orquestradas com frameworks de ponta.
+Todas as aplicações são alimentadas pelo modelo **GPT-4o**  e orquestradas com frameworks de ponta.
 
 ## 🛠️ Tecnologias Utilizadas
 * **Linguagem:** Python
-* **LLM Core:** Gemini 2.0 Flash (`google-genai`, `langchain-google-genai`)
+* **LLM Core:** GPT-4o
 * **Orquestração de Agentes:** CrewAI, LangChain
 * **Interfaces Gráficas:** Streamlit, Chainlit
 * **Ferramentas (Tools):** DuckDuckGo Search (Web Scraping/Grounding em tempo real), PyPDF (Ingestão de dados/RAG), SerperDevTool.
